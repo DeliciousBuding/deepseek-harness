@@ -32,6 +32,13 @@ peerDependencyRules:
   allowedVersions:
     typescript: '>=5 <7'
 
+# Local fork adaptation: skip the automatic re-install that pnpm 11 runs
+# before every script. The lefthook postinstall is intentionally skipped on
+# this machine (user-owned global core.hooksPath takes precedence), so the
+# re-install would fail and block `pnpm run build`. Keep CI's own gate as the
+# source of truth.
+verifyDepsBeforeRun: warn
+
 # pnpm 10+ blocks any dependency shipping an install/build script until it is
 # explicitly reviewed here (strictDepBuilds defaults to true: an unlisted script
 # is a hard install error). Every such package MUST be listed; we deny by
