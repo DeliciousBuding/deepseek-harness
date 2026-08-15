@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-15-danger-command-guard.md
+2026-08-15-danger-command-guard.md: c8d0432a3c8428a0bd7b7dd1ee59931dec22e526
+2026-08-15-danger-command-guard.zh.md: 46ba8fe48727f192bd5de72299417fb76751e3e4

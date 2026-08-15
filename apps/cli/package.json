@@ -34,6 +34,7 @@
     "@deepseek-ai/dsh-command-goal": "workspace:^",
     "@deepseek-ai/dsh-compaction-basic": "workspace:^",
     "@deepseek-ai/dsh-compaction-tool-result-pruner": "workspace:^",
+    "@deepseek-ai/dsh-danger-command-guard": "workspace:^",
     "@deepseek-ai/dsh-goal": "workspace:^",
     "@deepseek-ai/dsh-goal-round-driver": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
