@@ -17,18 +17,40 @@ A function/namespace plugin (`name` / `inject` / `apply`) consuming `ctx.tools`.
       name: '@deepseek-ai/dsh-danger-command-guard'
 ```
 
+Loading is profile-scoped: the package resolves through the profile's own dependency closure (`link:` in `~/.dsh/profiles/<name>/package.json`), and the `insert` row above registers it. The core `apps/cli` bundle never depends on it — this is an external plugin, not part of the harness core.
+
 ### Rules (ported from shell_guard.py, IGNORECASE, verbatim deny text)
 
 | rule | Command class | Note |
 | --- | --- | --- |
-| `rm-root` | `rm -r[f]` / `--force -r` / `-fr` against `/` or `~` | quoted / trailing-slash / `/*` / `~/*` variants; matches the PowerShell `rm` alias too |
+| `rm-root` | `rm -r[f]` / `--force -r` / `-fr` / `--recursive --force` against `/`, `~`, `//`, `/c/`, `$HOME`, `${HOME}` | quoted / trailing-slash / `/*` / `~/*` variants; matches the PowerShell `rm` alias too |
 | `prune-af` | `docker (system\|container\|image\|volume) prune` with `-af`, `--all --force`, or separated `-a -f` / `-f -a` | plain `prune -f` stays allowed |
 | `push-force` | `git push --force` / `-f` | `--force-with-lease` is veto-exempt |
+| `push-plus` | `git push +refspec` | force-overwrites a remote branch (equivalent to `--force`) |
 | `reset-hard` | `git reset --hard` | |
 | `ps-remove` | `Remove-Item` with both `-Recurse` and `-Force` (any order) against a root/home target | flag detection uses `(?:^\|\s)` because `-` is a non-word character |
 | `cmd-rd` | `rd`/`rmdir /s /q` against a root/home target | |
 
 The root/home target requires a terminator (whitespace, quote, end of string, `/`, or `*`), so sub-paths like `/tmp/...` or `C:\project` never match.
+
+### GuardFall hardening (`bash` only)
+
+The `bash` tool additionally runs the hardened judge (`judgeCommandHardened`), mirroring `shell_guard.py`'s `judge_shell_hardened` — the `pwsh` tool stays on the raw judge because POSIX tokenization would mangle `C:\` backslashes:
+
+- **Class A (quote merge)** — `r''m -rf /` is POSIX-tokenized then re-judged (`rm -rf /`).
+- **Class B (`$IFS`)** — `rm${IFS}-rf${IFS}/` with a destructive binary (`rm`/`docker`/`git`) → `ifs-obfuscation`.
+- **Class C (substitution)** — `echo "$(rm -rf /)"` recurses into `$(...)` / backtick bodies → `subst-<rule>`.
+- **Line continuation** — `rm -rf \<newline>/` is folded to one line before judging.
+
+### Escape hatches (audited, never silent)
+
+| env | effect | audit event |
+| --- | --- | --- |
+| `HOOK_KIT_GUARD_OFF=1` | disable the guard session-wide | `guard_bypass` |
+| `HOOK_KIT_GUARD_ALLOW_RULES=rm-root,...` | allow specific rules | `guard_rule_bypass` |
+| `HOOK_KIT_GUARD_DRY_RUN=1` | audit-only, never deny | `harness_deny_dryrun` |
+
+A denied call's reason carries the escape-hatch hint (rule id + audit path), so the model knows how to proceed deliberately instead of guessing.
 
 ### Deny behavior
 

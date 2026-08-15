@@ -21,7 +21,7 @@ import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as DangerCommandGuard from '@deepseek-ai/dsh-danger-command-guard'
-import { judgeCommand } from '@deepseek-ai/dsh-danger-command-guard'
+import { judgeCommand, judgeCommandHardened } from '@deepseek-ai/dsh-danger-command-guard'
 import type { Config } from '@deepseek-ai/dsh-danger-command-guard'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
@@ -185,6 +185,119 @@ describe('judgeCommand rule matrices (ported from test_shell_guard.py)', () => {
   })
 })
 
+// ---- GuardFall hardening parity (ported from test_shell_guard.py) ----
+
+describe('GuardFall hardening parity', () => {
+  describe('push-plus (+refspec)', () => {
+    it.each([
+      'git push origin +main',
+      'git push origin +refs/heads/main',
+    ])('denies %j', (command) => {
+      expect(judgeCommand(command)).toMatchObject({ rule: 'push-plus' })
+    })
+  })
+
+  describe('rm-root extended targets', () => {
+    it.each([
+      'rm --recursive --force /',
+      'rm --force --recursive /',
+      'rm --recursive -f /',
+      'rm -rf $HOME',
+      'rm -rf ${HOME}',
+      'rm -rf $HOME/*',
+      'rm -rf /c/',
+      'rm -rf "//"',
+      "rm -rf '//'",
+    ])('denies %j', (command) => {
+      expect(judgeCommand(command)).toMatchObject({ rule: 'rm-root' })
+    })
+
+    it.each([
+      'rm -rf $HOME/.cache',
+      'rm -rf ${HOME}/project/dist',
+      'rm -rf /tmp/build',
+    ])('passes sub-path %j', (command) => {
+      expect(judgeCommand(command)).toBeUndefined()
+    })
+  })
+
+  describe('judgeCommandHardened (Class A/B/C + line continuation)', () => {
+    it.each([
+      ["r''m -rf /", 'rm-root'],
+      ['r"m" -rf /', 'rm-root'],
+      ['r\\m -rf /', 'rm-root'],
+    ])('Class A quote-merge denies %j', (command, rule) => {
+      expect(judgeCommandHardened(command)).toMatchObject({ rule })
+    })
+
+    it.each([
+      'rm${IFS}-rf${IFS}/',
+      'rm${IFS}-r${IFS}/',
+    ])('Class B $IFS denies %j', (command) => {
+      expect(judgeCommandHardened(command)).toMatchObject({ rule: 'ifs-obfuscation' })
+    })
+
+    it.each([
+      'echo "$(rm -rf /)"',
+      'echo `rm -rf /`',
+    ])('Class C substitution denies %j', (command) => {
+      expect(judgeCommandHardened(command)).toMatchObject({ rule: 'subst-rm-root' })
+    })
+
+    it('denies a backslash-newline line continuation', () => {
+      expect(judgeCommandHardened('rm -rf \\\n/')).toMatchObject({ rule: 'rm-root' })
+    })
+
+    it.each([
+      'echo $(ls)',
+      'echo "hello world"',
+      'rm -rf /tmp/build',
+      'git push origin main',
+    ])('passes benign %j', (command) => {
+      expect(judgeCommandHardened(command)).toBeUndefined()
+    })
+  })
+})
+
+// ---- escape hatches (env vars, audited, tool still runs) ----
+
+describe('escape hatches', () => {
+  it.each([
+    ['HOOK_KIT_GUARD_OFF', '1', 'guard_bypass'],
+    ['HOOK_KIT_GUARD_DRY_RUN', '1', 'harness_deny_dryrun'],
+  ])('%s=1 lets the tool run and audits %s', async (envName, envValue, event) => {
+    vi.stubEnv(envName, envValue)
+    const auditPath = join(tempDir(), 'audit.jsonl')
+    const ctx = await registryHarness({ auditPath })
+    const bodyCalls = { count: 0 }
+    ctx.tools.register(probeTool('bash', bodyCalls))
+    const result = await ctx.tools.execute({
+      callId: CallId(`escape-${envName}`), name: 'bash', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
+    })
+    expect(result.isError).toBe(false)
+    expect(bodyCalls.count).toBe(1)
+    const entry = auditLines(auditPath)[0]!
+    expect(entry.event).toBe(event)
+    expect(entry.rule).toBe('rm-root')
+  })
+
+  it('HOOK_KIT_GUARD_ALLOW_RULES=rm-root lets the rule pass and audits guard_rule_bypass', async () => {
+    vi.stubEnv('HOOK_KIT_GUARD_ALLOW_RULES', 'rm-root')
+    const auditPath = join(tempDir(), 'audit.jsonl')
+    const ctx = await registryHarness({ auditPath })
+    const bodyCalls = { count: 0 }
+    ctx.tools.register(probeTool('bash', bodyCalls))
+    const result = await ctx.tools.execute({
+      callId: CallId('escape-allow-rules'), name: 'bash', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
+    })
+    expect(result.isError).toBe(false)
+    expect(bodyCalls.count).toBe(1)
+    const entry = auditLines(auditPath)[0]!
+    expect(entry.event).toBe('guard_rule_bypass')
+    expect(entry.rule).toBe('rm-root')
+  })
+})
+
 // ---- real tool registry: deny materializes as an error result ----
 
 /** A probe tool whose body counts invocations and returns fixed text. */
@@ -233,7 +346,10 @@ async function expectDenied(
     callId: CallId(`deny-${name}`), name, arguments: { command }, signal: testToolSignal,
   })
   expect(result.isError).toBe(true)
-  expect(result.content).toEqual([{ type: 'text', text: `Error: ${reason}` }])
+  expect(result.content).toHaveLength(1)
+  const block = result.content[0] as { type: string; text: string }
+  expect(block.type).toBe('text')
+  expect(block.text).toContain(`Error: ${reason}`)
   expect(bodyCalls.count).toBe(0)
 }
 
@@ -384,7 +500,7 @@ describe('audit trail', () => {
       })
     })
 
-    expect(resultTexts(agent)).toContain('Error: 危险命令已拦截：docker prune -af 有事故前科（2026-05-28），仅允许 docker system prune -f。')
+    expect(resultTexts(agent).some(text => text.includes('危险命令已拦截：docker prune -af 有事故前科'))).toBe(true)
     expect(bodyCalls.count).toBe(0)
     const entry = auditLines(auditPath)[0]!
     expect(entry.rule).toBe('prune-af')

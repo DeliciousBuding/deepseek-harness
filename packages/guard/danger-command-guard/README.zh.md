@@ -17,18 +17,40 @@
       name: '@deepseek-ai/dsh-danger-command-guard'
 ```
 
+加载是 profile 作用域：包通过 profile 自身的依赖闭包解析（`~/.dsh/profiles/<name>/package.json` 里的 `link:`），上面的 `insert` 行完成注册。核心 `apps/cli` bundle **从不依赖它**——这是外置插件，不属于 harness 核心。
+
 ### 规则（移植自 shell_guard.py，IGNORECASE，拦截文案逐字一致）
 
 | 规则 | 命令类别 | 备注 |
 | --- | --- | --- |
-| `rm-root` | `rm -r[f]` / `--force -r` / `-fr` 删除 `/` 或 `~` | 覆盖引号/尾斜杠/`/*`/`~/*` 变体；同样命中 PowerShell 的 `rm` 别名 |
+| `rm-root` | `rm -r[f]` / `--force -r` / `-fr` / `--recursive --force` 删除 `/`、`~`、`//`、`/c/`、`$HOME`、`${HOME}` | 覆盖引号/尾斜杠/`/*`/`~/*` 变体；同样命中 PowerShell 的 `rm` 别名 |
 | `prune-af` | `docker (system\|container\|image\|volume) prune` 带 `-af`、`--all --force` 或分离写法 `-a -f` / `-f -a` | 单独 `prune -f` 放行 |
 | `push-force` | `git push --force` / `-f` | `--force-with-lease` 经 veto 豁免 |
+| `push-plus` | `git push +refspec` | 强制覆盖远端分支（等价 `--force`） |
 | `reset-hard` | `git reset --hard` | |
 | `ps-remove` | `Remove-Item` 同时带 `-Recurse` 与 `-Force`（任意顺序）且目标为根/家目录 | flag 检测用 `(?:^\|\s)`，因 `-` 是非词字符 |
 | `cmd-rd` | `rd`/`rmdir /s /q` 且目标为根/家目录 | |
 
 根/家目录目标必须跟随终止符（空白、引号、行尾、`/` 或 `*`），因此 `/tmp/...`、`C:\project` 等子路径永不误伤。
+
+### GuardFall 加固（仅 `bash`）
+
+`bash` 工具额外走加固判定（`judgeCommandHardened`，对应 `shell_guard.py` 的 `judge_shell_hardened`）——`pwsh` 保持原始判定，因为 POSIX 令牌化会误拆 `C:\` 反斜杠：
+
+- **A 类（引号合并）** — `r''m -rf /` 先 POSIX 令牌化再复判（`rm -rf /`）。
+- **B 类（`$IFS`）** — `rm${IFS}-rf${IFS}/` 叠加破坏性二元组（`rm`/`docker`/`git`）→ `ifs-obfuscation`。
+- **C 类（命令替换）** — `echo "$(rm -rf /)"` 递归进入 `$(...)` / 反引号体 → `subst-<rule>`。
+- **行续接** — `rm -rf \<换行>/` 先折叠成单行再判定。
+
+### 逃生口（全程审计，绝不静默）
+
+| 环境变量 | 效果 | 审计事件 |
+| --- | --- | --- |
+| `HOOK_KIT_GUARD_OFF=1` | 会话级整体关闭守卫 | `guard_bypass` |
+| `HOOK_KIT_GUARD_ALLOW_RULES=rm-root,...` | 按规则放行 | `guard_rule_bypass` |
+| `HOOK_KIT_GUARD_DRY_RUN=1` | 只审计不拦截 | `harness_deny_dryrun` |
+
+被拦调用的 reason 自带逃生口提示（命中 rule id + 审计路径），模型据此可主动决定如何放行，而非瞎猜。
 
 ### deny 行为
 
