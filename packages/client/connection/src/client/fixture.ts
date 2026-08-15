@@ -780,7 +780,7 @@ const PERMISSION_PRESETS: Record<string, { sandbox: string; approval: string; de
 /** Host permissions-unit parallel: fold the three knob events, derive the select over the fixture defaults. */
 function permissionSelectOf(
   log: readonly SessionEvent[],
-): { options: { value: string; name: string; description?: string }[]; currentValue: string } {
+): { options: { value: string; name: string; description?: string }[]; currentValue: string; confirmFullAccess: boolean } {
   let preset: string | null = null
   let sandbox = 'workspace-write'
   let approval = 'ask'
@@ -806,6 +806,9 @@ function permissionSelectOf(
       ...currentValue === 'custom' ? [{ value: 'custom', name: 'Custom', description: 'Current sandbox and approval settings do not match a preset.' }] : [],
     ],
     currentValue,
+    // The fixture mirrors the shipped composition default: Full access asks
+    // for the in-page risk acknowledgement.
+    confirmFullAccess: true,
   }
 }
 

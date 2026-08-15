@@ -20,12 +20,12 @@ const SCHEMA = {
   },
 }
 
-function view(defaultPreset: string, revision = 0): SettingsNamespaceView {
+function view(defaultPreset: string, revision = 0, confirmFullAccess = true): SettingsNamespaceView {
   return {
     ns: 'permission',
     schema: SCHEMA,
-    value: { defaultPreset },
-    base: { defaultPreset: 'read-only' },
+    value: { defaultPreset, confirmFullAccess },
+    base: { defaultPreset: 'read-only', confirmFullAccess },
     applies: 'live',
     secrets: [],
     revision,
@@ -106,6 +106,22 @@ describe('PermissionRow', () => {
     fireEvent.click(enable)
     await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
     expect(dialog.isConnected).toBe(false)
+  })
+
+  it('selects Full access directly when the deployment disabled the risk gate', async () => {
+    const mutate = vi.fn(() => Promise.resolve(ok(view('danger-full-access', 1, false))))
+    const controller = new PermissionPresetSettingsController({
+      settings: {
+        describe: () => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [view('read-only', 0, false)] })),
+        mutate,
+      } as never,
+    })
+    mount(controller)
+    fireEvent.click(await screen.findByRole('button', { name: 'Read Only' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full access' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
+    await screen.findByRole('button', { name: 'Full access' })
   })
 
   it('hides an unavailable namespace and disables a read-only provider', async () => {

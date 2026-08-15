@@ -38,6 +38,7 @@ describe('permission settings store', () => {
         { id: 'read-only', label: 'Read Only' },
         { id: 'workspace-write', label: 'Workspace' },
       ],
+      confirmFullAccess: true,
     })
     const single = {
       uid: 2,
@@ -49,6 +50,7 @@ describe('permission settings store', () => {
     expect(permissionDefaultOf(view('read-only', 0, single))).toEqual({
       currentValue: 'read-only',
       options: [{ id: 'read-only', label: 'Read Only' }],
+      confirmFullAccess: true,
     })
     const undescribed = {
       uid: 2,

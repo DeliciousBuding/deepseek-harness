@@ -51,6 +51,12 @@ describe('permissions projection unit', () => {
     const value = ctx.sessionProjections.snapshot(session).values.permissions
     expect(value).toMatchObject({ currentValue: 'workspace-write' })
     expect(value?.options.map(option => option.value)).toEqual(['workspace-write', 'danger-full-access'])
+    expect(value?.confirmFullAccess).toBe(true)
+  })
+
+  it('carries the deployment Full access risk-gate flag', async () => {
+    const { ctx, session } = await harness({ config: { confirmFullAccess: false } })
+    expect(ctx.sessionProjections.snapshot(session).values.permissions?.confirmFullAccess).toBe(false)
   })
 
   it('folds the knob events and notifies the change feed per knob append', async () => {

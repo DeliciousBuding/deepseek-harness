@@ -77,7 +77,10 @@ export function PermissionRow({ load, select, usePermission, t }: PermissionRowP
           onSelect={(id) => {
             setOpen(false)
             if (id === state.currentValue) return
-            if (id === FULL_ACCESS_PRESET) {
+            // The deployment's risk gate: `confirmFullAccess` rides the
+            // settings value (default true), so a trusting deployment
+            // selects Full access directly.
+            if (id === FULL_ACCESS_PRESET && state.confirmFullAccess) {
               setAcknowledged(false)
               setConfirmingFullAccess(true)
               return

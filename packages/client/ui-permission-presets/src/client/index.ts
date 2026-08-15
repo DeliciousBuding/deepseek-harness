@@ -61,7 +61,10 @@ function optionsOf(value: PermissionSelect, t: (key: string) => string): SelectO
       label: displayPermissionPreset(option.value, option.name),
       ...(option.description !== undefined ? { detail: option.description } : {}),
       ...(option.value === value.currentValue ? { active: true } : {}),
-      ...(option.value === FULL_ACCESS_PRESET
+      // The deployment's risk gate: the projection carries whether Full
+      // access asks for acknowledgement; the shared popup shell owns the
+      // modal mechanics once a confirmation is attached.
+      ...(option.value === FULL_ACCESS_PRESET && value.confirmFullAccess
         ? {
           confirmation: {
             title: t('confirm.title'),

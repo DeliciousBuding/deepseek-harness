@@ -1188,6 +1188,7 @@ describe('command launcher chrome and control seats', () => {
         { value: 'danger-full-access', name: 'danger-full-access' },
       ],
       currentValue: 'read-only',
+      confirmFullAccess: true,
     }
     const { view } = bench({ permissions, command })
     const trigger = view.getByLabelText(/^访问模式/) as HTMLButtonElement
@@ -1216,6 +1217,7 @@ describe('command launcher chrome and control seats', () => {
         { value: 'danger-full-access', name: 'danger-full-access' },
       ],
       currentValue: 'workspace-write',
+      confirmFullAccess: true,
     }
     const { view } = bench({ permissions, command })
     fireEvent.click(view.getByLabelText(/^访问模式/))
@@ -1237,6 +1239,27 @@ describe('command launcher chrome and control seats', () => {
     await act(async () => {})
   })
 
+  it('selects Full access directly when the deployment disabled the risk gate', async () => {
+    const command = vi.fn(() => Promise.resolve(true))
+    const permissions = {
+      options: [
+        { value: 'workspace-write', name: 'workspace-write' },
+        { value: 'danger-full-access', name: 'danger-full-access' },
+      ],
+      currentValue: 'workspace-write',
+      confirmFullAccess: false,
+    }
+    const { view } = bench({ permissions, command })
+    fireEvent.click(view.getByLabelText(/^访问模式/))
+    fireEvent.click(view.getByRole('menuitem', { name: 'Full access' }))
+
+    expect(view.queryByRole('dialog')).toBeNull()
+    expect(command).toHaveBeenCalledOnce()
+    expect(command).toHaveBeenCalledWith('/permission danger-full-access')
+    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).textContent).toBe('Full access')
+    await act(async () => {})
+  })
+
   it('cancels a Full access selection without changing permission and resets acknowledgement', () => {
     const command = vi.fn(() => Promise.resolve(true))
     const permissions = {
@@ -1245,6 +1268,7 @@ describe('command launcher chrome and control seats', () => {
         { value: 'danger-full-access', name: 'danger-full-access' },
       ],
       currentValue: 'workspace-write',
+      confirmFullAccess: true,
     }
     const { view } = bench({ permissions, command })
     const openConfirmation = () => {
@@ -1271,6 +1295,7 @@ describe('command launcher chrome and control seats', () => {
         { value: 'danger-full-access', name: 'danger-full-access' },
       ],
       currentValue: 'workspace-write',
+      confirmFullAccess: true,
     }
     const { view, session } = bench({ permissions, command })
     fireEvent.click(view.getByLabelText(/^访问模式/))
@@ -1289,6 +1314,7 @@ describe('command launcher chrome and control seats', () => {
         { value: 'danger-full-access', name: 'danger-full-access' },
       ],
       currentValue: 'workspace-write',
+      confirmFullAccess: true,
     }
     const { view, props } = bench({ permissions, command })
     fireEvent.click(view.getByLabelText(/^访问模式/))
@@ -1315,7 +1341,7 @@ describe('command launcher chrome and control seats', () => {
   })
 
   it('disabled locks the Access chip and command launcher (running does not)', () => {
-    const permissions = { options: [{ value: 'workspace-write', name: 'workspace-write' }], currentValue: 'workspace-write' }
+    const permissions = { options: [{ value: 'workspace-write', name: 'workspace-write' }], currentValue: 'workspace-write', confirmFullAccess: true }
     const { view } = bench({ disabled: true, permissions })
     expect((view.getByLabelText('命令') as HTMLButtonElement).disabled).toBe(true)
     expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(true)

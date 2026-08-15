@@ -34,6 +34,8 @@ export interface PermissionSettingsState {
   currentValue: string
   options: readonly PermissionDefaultOption[]
   revision: number
+  /** Whether the row's Full access pick asks for an in-page risk acknowledgement. */
+  confirmFullAccess: boolean
 }
 
 interface ConstChoice {
@@ -45,11 +47,12 @@ interface ConstChoice {
 /**
  * Read the dynamic preset enum encoded by the host's `defaultPreset` schema.
  * @param view - permission namespace descriptor.
- * @returns current value and selectable options.
+ * @returns current value, selectable options, and the Full access risk-gate flag.
  */
 export function permissionDefaultOf(view: SettingsNamespaceView): {
   currentValue: string
   options: PermissionDefaultOption[]
+  confirmFullAccess: boolean
 } {
   const value = (view.value as { defaultPreset?: unknown } | null)?.defaultPreset
   if (typeof value !== 'string') throw new Error('permission settings has no defaultPreset value')
@@ -72,7 +75,8 @@ export function permissionDefaultOf(view: SettingsNamespaceView): {
   if (options.length === 0 || !options.some(option => option.id === value)) {
     throw new Error('permission settings schema does not advertise its current preset')
   }
-  return { currentValue: value, options }
+  const confirmFullAccess = (view.value as { confirmFullAccess?: unknown } | null)?.confirmFullAccess
+  return { currentValue: value, options, confirmFullAccess: confirmFullAccess !== false }
 }
 
 /** Controller joining Settings reads, writes, and pushed invalidations. */
@@ -85,6 +89,7 @@ export class PermissionPresetSettingsController {
     currentValue: '',
     options: [],
     revision: 0,
+    confirmFullAccess: true,
   })
 
   private generation = 0
@@ -170,6 +175,7 @@ export class PermissionPresetSettingsController {
       state.currentValue = resolved.currentValue
       state.options = resolved.options
       state.revision = view.revision
+      state.confirmFullAccess = resolved.confirmFullAccess
     })
   }
 

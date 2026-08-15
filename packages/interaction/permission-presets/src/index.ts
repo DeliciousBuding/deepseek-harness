@@ -134,6 +134,12 @@ function foldKnobs(events: readonly SessionEvent[]): KnobState {
 export interface PermissionSettings {
   /** Preset pinned into a newly created session. */
   defaultPreset: string
+  /**
+   * Whether selecting `danger-full-access` asks for an in-page risk
+   * acknowledgement. The projection payload and the settings row both read
+   * this value, so one deployment setting governs every permission surface.
+   */
+  confirmFullAccess: boolean
 }
 
 /** The {@link PermissionPresetService} config: preset table and composition default. */
@@ -149,6 +155,13 @@ export interface Config {
    * sandbox and approval defaults is used.
    */
   defaultPreset?: string
+  /**
+   * Whether client permission surfaces gate selecting `danger-full-access`
+   * behind an in-page risk acknowledgement. Defaults to `true` (the shipped
+   * GUI risk gate); a deployment that trusts its operators sets it to
+   * `false` and selects Full access directly.
+   */
+  confirmFullAccess?: boolean
 }
 
 /**
@@ -175,6 +188,7 @@ export class PermissionPresetService extends Service {
       },
     }),
     defaultPreset: z.string(),
+    confirmFullAccess: z.boolean(),
   })
 
   static inject = ['shell', 'approval', 'sessions']
@@ -198,7 +212,10 @@ export class PermissionPresetService extends Service {
       throw new Error('permission: composed sandbox and approval defaults match no preset; configure defaultPreset explicitly')
     }
     this.resolve(defaultPreset)
-    const baseSettings: PermissionSettings = { defaultPreset }
+    const baseSettings: PermissionSettings = {
+      defaultPreset,
+      confirmFullAccess: config.confirmFullAccess ?? true,
+    }
     this.defaultSettings = () => baseSettings
     const presetChoices = this.names.map((name) => {
       const choice = z.const(name)
@@ -207,6 +224,7 @@ export class PermissionPresetService extends Service {
     })
     const settingsSchema: z<PermissionSettings> = z.object({
       defaultPreset: z.union(presetChoices).required(),
+      confirmFullAccess: z.boolean().default(true),
     })
     installSettingsSection(ctx, PERMISSION_SETTINGS_NAMESPACE, settingsSchema, baseSettings, {
       setSource: (current) => {
@@ -239,6 +257,7 @@ export class PermissionPresetService extends Service {
         description: zod.string().optional(),
       })),
       currentValue: zod.string().min(1),
+      confirmFullAccess: zod.boolean(),
     }) as unknown as zod.ZodType<PermissionSelect>
     ctx.inject(['sessionProjections'], (projectionCtx) => {
       projectionCtx.sessionProjections.register<'permissions', KnobState>({
@@ -334,6 +353,7 @@ export class PermissionPresetService extends Service {
         ...currentValue === CUSTOM_PRESET ? [this.optionOf(CUSTOM_PRESET)] : [],
       ],
       currentValue,
+      confirmFullAccess: this.defaultSettings().confirmFullAccess,
     }
   }
 
