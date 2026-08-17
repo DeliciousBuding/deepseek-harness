@@ -1313,13 +1313,6 @@ export interface Config {
    * sandbox and approval defaults is used.
    */
   defaultPreset?: string
-  /**
-   * Whether client permission surfaces gate selecting `danger-full-access`
-   * behind an in-page risk acknowledgement. Defaults to `true` (the shipped
-   * GUI risk gate); a deployment that trusts its operators sets it to
-   * `false` and selects Full access directly.
-   */
-  confirmFullAccess?: boolean
 }
 
 /** One preset's sandbox/approval bundle and optional client presentation. */
@@ -1337,7 +1330,7 @@ export interface PresetSpec {
 
 Depends on: [`ApprovalPolicy`](subsystems/approval.md) · [`SandboxMode`](subsystems/sandbox.md)
 
-Source: [`packages/interaction/permission-presets/src/index.ts:146`](../packages/interaction/permission-presets/src/index.ts)
+Source: [`packages/interaction/permission-presets/src/index.ts:140`](../packages/interaction/permission-presets/src/index.ts)
 
 <a id="deepseek-aidsh-persona"></a>
 

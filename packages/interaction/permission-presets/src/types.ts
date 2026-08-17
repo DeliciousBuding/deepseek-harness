@@ -29,12 +29,6 @@ export interface PermissionSelect {
   options: PresetOption[]
   /** The effective current value: a preset table key, or `custom`. */
   currentValue: string
-  /**
-   * Whether selecting `danger-full-access` asks for an in-page risk
-   * acknowledgement. Deployment-wide (the permission settings value), so a
-   * trusting deployment can select Full access directly.
-   */
-  confirmFullAccess: boolean
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {

@@ -30,7 +30,6 @@ const SELECT: PermissionSelect = {
     { value: 'danger-full-access', name: 'danger-full-access' },
   ],
   currentValue: 'workspace-write',
-  confirmFullAccess: true,
 }
 
 async function bench() {
@@ -136,12 +135,6 @@ describe('ui-permission browser plugin', () => {
       cancelLabel: 'Cancel',
       confirmLabel: 'Enable Full access',
     })
-    // A trusting deployment turns the risk gate off: Full access attaches no
-    // confirmation and selects directly.
-    b.values.set(sid('s1'), { ...SELECT, confirmFullAccess: false })
-    const unguarded = await c.ui.options(proj, new AbortController().signal)
-    expect(unguarded.find(option => option.id === 'danger-full-access')?.confirmation).toBeUndefined()
-    b.values.set(sid('s1'), SELECT)
     b.values.set(sid('s1'), { ...SELECT, options: [{ value: 'plain', name: 'Ask Every Time' }] })
     const passthrough = await c.ui.options(proj, new AbortController().signal)
     expect(passthrough[0]?.label).toBe('Ask Every Time')

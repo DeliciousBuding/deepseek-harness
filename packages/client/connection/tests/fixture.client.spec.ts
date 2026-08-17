@@ -148,7 +148,6 @@ describe('createFixtureApi', () => {
             { value: 'danger-full-access', name: 'danger-full-access', description: 'Full file access without approval prompts.' },
           ],
           currentValue: 'workspace-write',
-          confirmFullAccess: true,
         },
         plan: { active: false, pending: false },
         goal: null,

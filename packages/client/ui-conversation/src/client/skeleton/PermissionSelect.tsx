@@ -105,10 +105,7 @@ export function PermissionSelect({ value, locked, command, t }: PermissionSelect
   const choose = (id: string): void => {
     setOpen(false)
     if (id === value.currentValue) return
-    // The deployment's risk gate: the host projection carries whether Full
-    // access asks for acknowledgement (default true), so a trusting
-    // deployment selects it directly.
-    if (id === FULL_ACCESS && value.confirmFullAccess) {
+    if (id === FULL_ACCESS) {
       setAcknowledged(false)
       setConfirmation(id)
       return

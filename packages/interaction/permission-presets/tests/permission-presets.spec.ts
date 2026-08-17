@@ -47,10 +47,7 @@ function freshSession(id: string): Session {
   return Session.create(SessionId(id))
 }
 
-async function mountedStore(options: {
-  approvalDefault?: ApprovalPolicy | undefined
-  config?: Config
-} = {}): Promise<Context> {
+async function mountedStore(options: { approvalDefault?: ApprovalPolicy | undefined } = {}): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(MemorySettings)
@@ -63,7 +60,7 @@ async function mountedStore(options: {
   ctx.provide('approval', {
     config: { policy: 'approvalDefault' in options ? options.approvalDefault : 'ask' },
   })
-  await ctx.plugin(PermissionPresetService, options.config ?? {})
+  await ctx.plugin(PermissionPresetService, {})
   return ctx
 }
 
@@ -196,16 +193,6 @@ describe('PermissionPresetService', () => {
 })
 
 describe('new-session default', () => {
-  it('exposes the deployment Full access risk-gate flag through the settings value', async () => {
-    const ctx = await mountedStore()
-    const view = ctx.settings.describe().find(entry => entry.ns === PERMISSION_SETTINGS_NAMESPACE)
-    expect(view?.value).toMatchObject({ defaultPreset: 'workspace-write', confirmFullAccess: true })
-
-    const relaxed = await mountedStore({ config: { confirmFullAccess: false } })
-    const relaxedView = relaxed.settings.describe().find(entry => entry.ns === PERMISSION_SETTINGS_NAMESPACE)
-    expect(relaxedView?.value).toMatchObject({ defaultPreset: 'workspace-write', confirmFullAccess: false })
-  })
-
   it('pins the current setting into each new session without changing earlier sessions', async () => {
     const ctx = await mountedStore()
     const first = ctx.sessions.create(SessionId('first'))
