@@ -758,7 +758,14 @@ async function main() {
           refuseScopedHooksPath(effectiveEntry)
         }
         if (process.env[ALLOW_HOOKS_PATH_OVERRIDE] !== '1') {
-          refuseInheritedHooksPath(effectiveEntry)
+          // Fork adaptation (2026-08-19): a user-owned global core.hooksPath
+          // (git-commit-guard / hook-kit) takes precedence over lefthook. Skip
+          // the install instead of refusing so `pnpm install` never blocks on
+          // this machine; lefthook.yml stays runnable via `lefthook run`.
+          console.warn(
+            `[install-lefthook] skipping: user-owned core.hooksPath (${configSource(effectiveEntry)}) — global hooks stay in charge.`,
+          )
+          return
         }
       }
     }
