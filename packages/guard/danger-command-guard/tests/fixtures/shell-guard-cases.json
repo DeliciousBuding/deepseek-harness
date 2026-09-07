@@ -1,0 +1,365 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "force-long",
+      "command": "git push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "force-short",
+      "command": "git push -f origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "force-uppercase-long",
+      "command": "git push --FORCE origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "uppercase-short-is-not-force",
+      "command": "git push -F note.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "lease-only",
+      "command": "git push --force-with-lease origin topic",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "lease-explicit-ref",
+      "command": "git push --force-with-lease=refs/heads/topic:abc123 origin topic",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "includes-is-not-force",
+      "command": "git push --force-if-includes origin topic",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "lease-and-force",
+      "command": "git push --force-with-lease --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "force-and-lease",
+      "command": "git push --force --force-with-lease origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-and-short-force",
+      "command": "git push --force-with-lease -f origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-newline",
+      "command": "git push --force-with-lease origin topic\ngit push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-semicolon",
+      "command": "git push --force-with-lease origin topic; git push -f origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-and-chain",
+      "command": "git push --force-with-lease origin topic && git push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-or-chain",
+      "command": "git push --force origin topic || git push --force-with-lease origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-quoted-data",
+      "command": "printf '%s' '--force-with-lease'; git push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-literal-body",
+      "command": "cat <<'NOTE'\n--force-with-lease\nNOTE\ngit push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "heredoc-header-command",
+      "command": "cat <<'NOTE'; git push --force origin topic\n--force-with-lease\nNOTE",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "lease-powershell-data",
+      "command": "@'\n--force-with-lease\n'@ | Set-Content note.txt; git push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "unrelated-semicolon-flag",
+      "command": "git push origin topic; tar -f out.tar file.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "unrelated-newline-flag",
+      "command": "git push origin topic\ntar -f out.tar file.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "unrelated-crlf-flag",
+      "command": "git push origin topic\r\ntar -f out.tar file.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "force-in-comment",
+      "command": "git push origin topic # --force",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "quoted-semicolon-path",
+      "command": "git -C 'repo;docs' push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "merged-quotes-with-semicolon-path",
+      "command": "g''it -C 'repo;docs' p''ush --for'ce' origin topic",
+      "raw_rule": null,
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "force-continuation",
+      "command": "git push \\\n--force origin topic",
+      "raw_rule": null,
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "empty-line-ends-continuation",
+      "command": "git push \\\n\n--force origin topic",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "literal-heredoc",
+      "command": "cat <<'NOTE'\ngit push --force\n$(rm -rf /)\nNOTE",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "literal-double-quoted-heredoc",
+      "command": "cat <<\"NOTE\"\ngit reset --hard\nNOTE",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "literal-escaped-heredoc",
+      "command": "cat <<\\NOTE\ngit push --force\nNOTE",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "literal-tab-heredoc",
+      "command": "cat <<-'NOTE'\n\tgit push --force\n\tNOTE",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "literal-powershell",
+      "command": "@'\ngit push --force\n$(rm -rf /)\n'@ | Set-Content note.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "literal-trailing-backslash",
+      "command": "@'\ngit reset --hard\nC:\\\n'@ | Set-Content note.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "expandable-powershell",
+      "command": "@\"\n$(rm -rf /)\n\"@ | Set-Content note.txt",
+      "raw_rule": null,
+      "hardened_rule": "subst-rm-root"
+    },
+    {
+      "id": "expandable-heredoc",
+      "command": "cat <<NOTE\n$(rm -rf /)\nNOTE",
+      "raw_rule": null,
+      "hardened_rule": "subst-rm-root"
+    },
+    {
+      "id": "powershell-backticks-are-escapes",
+      "command": "Write-Output `git push --force-with-lease`",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "substitution-force",
+      "command": "echo \"$(git push --force-with-lease; git push --force)\"",
+      "raw_rule": "push-force",
+      "hardened_rule": "subst-push-force"
+    },
+    {
+      "id": "git-dot-redirect",
+      "command": "echo data > .git/config",
+      "raw_rule": "git-dot",
+      "hardened_rule": "git-dot"
+    },
+    {
+      "id": "git-dot-tee",
+      "command": "echo data | tee .git/config",
+      "raw_rule": "git-dot",
+      "hardened_rule": "git-dot"
+    },
+    {
+      "id": "git-dot-powershell",
+      "command": "Set-Content -LiteralPath '.git/config' -Value data",
+      "raw_rule": "git-dot",
+      "hardened_rule": "git-dot"
+    },
+    {
+      "id": "git-dot-python",
+      "command": "python -c \"from pathlib import Path; Path('.git/config').write_text('data')\"",
+      "raw_rule": "git-dot",
+      "hardened_rule": "git-dot"
+    },
+    {
+      "id": "git-dot-read",
+      "command": "cat .git/config",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "git-dot-statement-isolation",
+      "command": "git init repo; Get-ChildItem .git -Name; Remove-Item temporary.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "git-neighbour-write",
+      "command": "echo data > .gitignore",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "git-neighbour-directory",
+      "command": "touch .githooks/pre-commit",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "rm-root",
+      "command": "rm -rf /",
+      "raw_rule": "rm-root",
+      "hardened_rule": "rm-root"
+    },
+    {
+      "id": "rm-subpath",
+      "command": "rm -rf ./build",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "rm-quote-merge",
+      "command": "r''m -rf /",
+      "raw_rule": null,
+      "hardened_rule": "rm-root"
+    },
+    {
+      "id": "prune-force-all",
+      "command": "docker system prune -af",
+      "raw_rule": "prune-af",
+      "hardened_rule": "prune-af"
+    },
+    {
+      "id": "reset-hard",
+      "command": "git reset --hard HEAD",
+      "raw_rule": "reset-hard",
+      "hardened_rule": "reset-hard"
+    },
+    {
+      "id": "plus-refspec",
+      "command": "git push origin +topic:topic",
+      "raw_rule": "push-plus",
+      "hardened_rule": "push-plus"
+    },
+    {
+      "id": "ps-root",
+      "command": "Remove-Item -Recurse -Force $env:USERPROFILE",
+      "raw_rule": "ps-remove",
+      "hardened_rule": "ps-remove"
+    },
+    {
+      "id": "cmd-root",
+      "command": "rd /s /q C:\\",
+      "raw_rule": "cmd-rd",
+      "hardened_rule": "cmd-rd"
+    },
+    {
+      "id": "empty-command",
+      "command": "",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "comment-ends-at-newline",
+      "command": "echo note # --force-with-lease\ngit push --force origin topic",
+      "raw_rule": "push-force",
+      "hardened_rule": "push-force"
+    },
+    {
+      "id": "unclosed-here-string",
+      "command": "@'\nunfinished",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "unclosed-double-quote",
+      "command": "printf \"unfinished",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "escaped-double-quote",
+      "command": "printf \"quoted\\\" data\"",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "unclosed-escape-in-double-quote",
+      "command": "printf \"unfinished\\",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "git-dot-read-write-word",
+      "command": "Get-Content .git/refs/write_text",
+      "raw_rule": null,
+      "hardened_rule": null
+    },
+    {
+      "id": "expandable-safe-substitution",
+      "command": "@\"\n$(Get-Date)\n\"@ | Set-Content note.txt",
+      "raw_rule": null,
+      "hardened_rule": null
+    }
+  ]
+}

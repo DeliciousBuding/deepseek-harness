@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Native danger-command guard: monotonic deny policy over catastrophic shell commands on the `bash`/`pwsh` tools, plus a JSONL audit trail in the local hook-kit audit log. The rule set, matching semantics, and deny text port the hook-kit's `shell_guard.py` (the multi-platform harness guard SSOT) verbatim, so every harness platform blocks the same disaster class and writes to the same audit log.
+Native danger-command guard: monotonic deny policy over catastrophic shell commands on the `bash`/`pwsh` tools, plus a JSONL audit trail in the local hook-kit audit log. Command matching follows the Python shell guard and is checked against a shared public fixture; the TypeScript plugin runs independently and keeps its Chinese deny text.
 
 ## Plugin (namespace: `danger-command-guard`)
 
@@ -19,17 +19,18 @@ A function/namespace plugin (`name` / `inject` / `apply`) consuming `ctx.tools`.
 
 Loading is profile-scoped: the package resolves through the profile's own dependency closure (`link:` in `~/.dsh/profiles/<name>/package.json`), and the `insert` row above registers it. The core `apps/cli` bundle never depends on it — this is an external plugin, not part of the harness core.
 
-### Rules (ported from shell_guard.py, IGNORECASE, verbatim deny text)
+### Rules
 
 | rule | Command class | Note |
 | --- | --- | --- |
 | `rm-root` | `rm -r[f]` / `--force -r` / `-fr` / `--recursive --force` against `/`, `~`, `//`, `/c/`, `$HOME`, `${HOME}` | quoted / trailing-slash / `/*` / `~/*` variants; matches the PowerShell `rm` alias too |
 | `prune-af` | `docker (system\|container\|image\|volume) prune` with `-af`, `--all --force`, or separated `-a -f` / `-f -a` | plain `prune -f` stays allowed |
-| `push-force` | `git push --force` / `-f` | `--force-with-lease` is veto-exempt |
+| `push-force` | `git push --force` / `-f` | lease alone is allowed; explicit `--force` or lowercase `-f` still denies, even with lease |
 | `push-plus` | `git push +refspec` | force-overwrites a remote branch (equivalent to `--force`) |
 | `reset-hard` | `git reset --hard` | |
 | `ps-remove` | `Remove-Item` with both `-Recurse` and `-Force` (any order) against a root/home target | flag detection uses `(?:^\|\s)` because `-` is a non-word character |
 | `cmd-rd` | `rd`/`rmdir /s /q` against a root/home target | |
+| `git-dot` | shell writes to `.git` internals: redirection, write commands, Python file writes | read-only commands and neighbouring names such as `.gitignore` are allowed |
 
 The root/home target requires a terminator (whitespace, quote, end of string, `/`, or `*`), so sub-paths like `/tmp/...` or `C:\project` never match.
 
@@ -40,7 +41,9 @@ The `bash` tool additionally runs the hardened judge (`judgeCommandHardened`), m
 - **Class A (quote merge)** — `r''m -rf /` is POSIX-tokenized then re-judged (`rm -rf /`).
 - **Class B (`$IFS`)** — `rm${IFS}-rf${IFS}/` with a destructive binary (`rm`/`docker`/`git`) → `ifs-obfuscation`.
 - **Class C (substitution)** — `echo "$(rm -rf /)"` recurses into `$(...)` / backtick bodies → `subst-<rule>`.
-- **Line continuation** — `rm -rf \<newline>/` is folded to one line before judging.
+- **Line continuation** — `rm -rf \<newline>/` is folded to one line before judging; bare newlines remain command separators.
+
+Unquoted semicolons, pipes, and newlines isolate statements; separators inside quoted arguments do not. Quoted or escaped Bash heredocs and PowerShell here-string bodies are stripped before continuation folding, without discarding commands or redirects on their declaration line. Expandable PowerShell bodies and unquoted Bash heredocs retain `$()` scanning in the hardened judge. PowerShell backticks are escapes, not Bash substitutions.
 
 ### Escape hatches (audited, never silent)
 
@@ -84,6 +87,7 @@ No prompt or schema is added. When a guarded tool is called with a dangerous com
 - `危险操作已拦截：git reset --hard 属破坏性操作。`
 - `危险命令已拦截：Remove-Item -Recurse -Force 删除根目录/家目录不可恢复。`
 - `危险命令已拦截：rd/rmdir /s /q 删除根目录/家目录不可恢复。`
+- `危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。`
 
 #### Token effect
 
@@ -92,6 +96,10 @@ Zero tokens on allowed calls. A denial replaces the (not executed) tool output w
 #### KV Cache effect
 
 Append-only; the deny result follows the reusable request prefix and does not invalidate existing KV-cache entries.
+
+## Shared regression data
+
+[The generated cases](tests/fixtures/shell-guard-cases.json) and adjacent SHA-256 file mirror the Python guard's `tests/fixtures/shell-guard-cases.json`. Its `sync_guard_cases.py <package-root>` helper refreshes both; `--check` compares them without writing. The checksum covers UTF-8 with LF newlines. Package CI verifies the digest and both raw/hardened verdicts without fetching the Python repository; commands remain test data and are never run by a shell.
 
 ## Known Limitations and Deferred Work
 
