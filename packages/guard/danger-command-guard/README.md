@@ -73,6 +73,10 @@ A denial returns a `PreToolDecision.deny` with the Chinese reason (materialized 
 | `actor` | `dsh` | `actor` value on audit entries |
 | `commandPreviewChars` | `200` | command preview cap; must be an integer ≥ 1 |
 
+## Shared regression data
+
+[The generated cases](tests/fixtures/shell-guard-cases.json) and adjacent SHA-256 file mirror the Python guard's `tests/fixtures/shell-guard-cases.json`. Its `sync_guard_cases.py <package-root>` helper refreshes both; `--check` compares them without writing. The checksum covers UTF-8 with LF newlines. Package CI verifies the digest and both raw/hardened verdicts without fetching the Python repository; commands remain test data and are never run by a shell.
+
 ## Model Experience
 
 ### Conditional deny result
@@ -81,13 +85,17 @@ A denial returns a `PreToolDecision.deny` with the Chinese reason (materialized 
 
 No prompt or schema is added. When a guarded tool is called with a dangerous command, the call returns `Error: <deny reason>` with the exact Chinese texts below; every other call passes through unchanged.
 
-- `危险命令已拦截：rm -rf 删除根目录/家目录不可恢复（安全红线）。`
-- `危险命令已拦截：docker prune -af 有事故前科（2026-05-28），仅允许 docker system prune -f。`
-- `危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。`
-- `危险操作已拦截：git reset --hard 属破坏性操作。`
-- `危险命令已拦截：Remove-Item -Recurse -Force 删除根目录/家目录不可恢复。`
-- `危险命令已拦截：rd/rmdir /s /q 删除根目录/家目录不可恢复。`
-- `危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。`
+##### Possible denial reasons (one per call)
+
+```markdown
+危险命令已拦截：rm -rf 删除根目录/家目录不可恢复（安全红线）。
+危险命令已拦截：docker prune -af 有事故前科（2026-05-28），仅允许 docker system prune -f。
+危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。
+危险操作已拦截：git reset --hard 属破坏性操作。
+危险命令已拦截：Remove-Item -Recurse -Force 删除根目录/家目录不可恢复。
+危险命令已拦截：rd/rmdir /s /q 删除根目录/家目录不可恢复。
+危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。
+```
 
 #### Token effect
 
@@ -96,10 +104,6 @@ Zero tokens on allowed calls. A denial replaces the (not executed) tool output w
 #### KV Cache effect
 
 Append-only; the deny result follows the reusable request prefix and does not invalidate existing KV-cache entries.
-
-## Shared regression data
-
-[The generated cases](tests/fixtures/shell-guard-cases.json) and adjacent SHA-256 file mirror the Python guard's `tests/fixtures/shell-guard-cases.json`. Its `sync_guard_cases.py <package-root>` helper refreshes both; `--check` compares them without writing. The checksum covers UTF-8 with LF newlines. Package CI verifies the digest and both raw/hardened verdicts without fetching the Python repository; commands remain test data and are never run by a shell.
 
 ## Known Limitations and Deferred Work
 

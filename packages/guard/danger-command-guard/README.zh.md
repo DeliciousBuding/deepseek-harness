@@ -73,6 +73,10 @@
 | `actor` | `dsh` | 审计条目上的 `actor` 值 |
 | `commandPreviewChars` | `200` | 命令预览截断长度；必须为 ≥ 1 的整数 |
 
+## 共用回归数据
+
+[生成的案例](tests/fixtures/shell-guard-cases.json)及相邻 SHA-256 文件来自 Python 守卫的 `tests/fixtures/shell-guard-cases.json`。由源侧 `sync_guard_cases.py <package-root>` 同时刷新，`--check` 只比较、不写入；摘要覆盖 UTF-8、LF 换行内容。包 CI 独立校验摘要及原始/加固判定，不拉取 Python 仓库；命令始终作为测试数据，不交给 shell 执行。
+
 ## Model Experience
 
 ### 条件性 deny 结果
@@ -81,13 +85,17 @@
 
 不新增任何 prompt 或 schema。当被守卫工具以危险命令调用时，调用返回 `Error: <拦截原因>`，文案如下（逐字）；其余调用原样放行。
 
-- `危险命令已拦截：rm -rf 删除根目录/家目录不可恢复（安全红线）。`
-- `危险命令已拦截：docker prune -af 有事故前科（2026-05-28），仅允许 docker system prune -f。`
-- `危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。`
-- `危险操作已拦截：git reset --hard 属破坏性操作。`
-- `危险命令已拦截：Remove-Item -Recurse -Force 删除根目录/家目录不可恢复。`
-- `危险命令已拦截：rd/rmdir /s /q 删除根目录/家目录不可恢复。`
-- `危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。`
+##### 可能的拦截原因（每次调用返回一条）
+
+```markdown
+危险命令已拦截：rm -rf 删除根目录/家目录不可恢复（安全红线）。
+危险命令已拦截：docker prune -af 有事故前科（2026-05-28），仅允许 docker system prune -f。
+危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。
+危险操作已拦截：git reset --hard 属破坏性操作。
+危险命令已拦截：Remove-Item -Recurse -Force 删除根目录/家目录不可恢复。
+危险命令已拦截：rd/rmdir /s /q 删除根目录/家目录不可恢复。
+危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。
+```
 
 #### Token 影响
 
@@ -96,10 +104,6 @@
 #### KV Cache 影响
 
 仅追加；deny 结果跟随可复用的请求前缀，不使既有 KV-cache 条目失效。
-
-## 共用回归数据
-
-[生成的案例](tests/fixtures/shell-guard-cases.json)及相邻 SHA-256 文件来自 Python 守卫的 `tests/fixtures/shell-guard-cases.json`。由源侧 `sync_guard_cases.py <package-root>` 同时刷新，`--check` 只比较、不写入；摘要覆盖 UTF-8、LF 换行内容。包 CI 独立校验摘要及原始/加固判定，不拉取 Python 仓库；命令始终作为测试数据，不交给 shell 执行。
 
 ## Known Limitations and Deferred Work
 

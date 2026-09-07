@@ -646,7 +646,7 @@ describe('guard through a test-only Loader composition', () => {
       const commands = ['lease-and-force', 'git-dot-redirect', 'literal-heredoc']
         .map(id => sharedFixture.cases.find(testCase => testCase.id === id)!.command)
       ctx.llm.registerAdapter(['mock'], new MockAdapter([
-        ...commands.map((command, index) => toolCallResponse('call-' + index, 'bash', { command })),
+        ...commands.map((command, index) => toolCallResponse(`call-${index}`, 'bash', { command })),
         textResponse('done'),
       ]))
       const agent = ctx.agentLoop.create(SessionId('guard-loader'), { provider: 'mock', model: 'mock' })

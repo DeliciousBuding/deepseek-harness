@@ -15,13 +15,13 @@ Status: implemented
 - **`tools/pre-execute`** — 可扩展 waterfall 门禁。命中即返回 `PreToolDecision.deny`，携带模型可见的中文 reason（物化为 `Error: <reason>` 工具结果）；其余一律 `next()` 委托。
 - **`ctx.tools.guard()`** — 单调终局守卫。整个 waterfall 结束后重新判定，上游监听器即使短路返回 allow 也无法复活该最终不变量禁止的调用。
 
-规则集是 `shell_guard.py` 的逐行移植：四条内联正则规则（`rm-root`、`prune-af`、`push-force` 带 `--force-with-lease` veto、`reset-hard`）加两个谓词检查（`ps-remove`、`cmd-rd`），沿用同一 `ROOT_TARGET` 终止符逻辑与 IGNORECASE 语义，拦截文案逐字中文一致。单测 deny/pass 矩阵照搬 `tests/test_shell_guard.py` 的 parametrize 列表，使两个实现可证明地保持一致。
+原生判定器保持 Python 守卫的同命令强推检查、literal body 处理和 `.git` shell 写入检查。全局 lease 豁免会让一条命令掩盖另一条破坏性 push；拆分引号内分隔符则会把数据误当命令。[生成的共用案例](../../../../packages/guard/danger-command-guard/README.md) 固定 raw 与 hardened 判定，不让包 CI 依赖 Python 运行时或私有仓库。摘要用于检测副本过期；有限案例一致不证明任意输入上的解析等价，也不证明部署的 profile 已加载插件。
 
 deny 同时追加一行 hook-kit `audit.py` 格式的 JSONL 审计（`ts`/`event: harness_deny`/`actor: dsh`/`rule`/`tool`/按 `commandPreviewChars` 截断的 `command`/`cwd`/`session_id`）到 `$HOOK_KIT_AUDIT_LOG` 或 `~/.config/hook-kit/audit.jsonl`，由 TypeScript 直接写文件（不调 Python）。写入 fail-soft：审计 I/O 错误一律吞掉，绝不影响守卫判定或工具调用。
 
 ## Consequences
 
-- 本机 `web` profile 挂载该行（`~/.dsh/profiles/web/cordis.patch.yml`，`insert`，id 为 `danger-command-guard`）；包经应用依赖闭包 heal 到 `$DSH_HOME/profiles/node_modules` 解析。
+- host 聚合检查本包及其测试，不向内置 bundle 添加依赖；插件仍须由 profile 声明并启用。
 - 拦截现在产生模型可见的错误结果而非执行；会话日志经普通 `tool/result` 管线记录 deny，无需新会话事件。
 - 守卫、拦截文案与审计格式与 hook-kit 共享同一语义源；那边任何规则变更都须连同测试移植到这里。
 - 审计轮转仍留在 Python 侧（本插件只追加不轮转）；范围仅限 `bash`/`pwsh` 两个工具名。

@@ -569,6 +569,34 @@ export interface Config {
 
 来源：[`packages/credentials/credentials-local/src/index.ts:55`](../packages/credentials/credentials-local/src/index.ts)
 
+<a id="deepseek-aidsh-danger-command-guard"></a>
+
+## `@deepseek-ai/dsh-danger-command-guard`
+
+需要：`tools`
+
+```ts config-catalog
+/**
+ * Plugin config, validated by the same-named schemastery schema plus the
+ * load-time checks in `apply` (misconfiguration fails loud: a non-integer or
+ * below-1 `commandPreviewChars`, or a blank `auditPath`, throws at plugin
+ * load).
+ */
+export interface Config {
+  /**
+   * JSONL audit log path. Unset resolves to `$HOOK_KIT_AUDIT_LOG`, else
+   * `~/.config/hook-kit/audit.jsonl` (the server hook-kit's own log).
+   */
+  auditPath?: string
+  /** The `actor` value stamped on every audit entry (default `dsh`). */
+  actor?: string
+  /** Maximum command characters quoted in an audit entry (default 200). */
+  commandPreviewChars?: number
+}
+```
+
+来源：[`packages/guard/danger-command-guard/src/index.ts:50`](../packages/guard/danger-command-guard/src/index.ts)
+
 <a id="deepseek-aidsh-e2b"></a>
 
 ## `@deepseek-ai/dsh-e2b`

@@ -275,7 +275,7 @@ function stripLiteralBodies(command: string): { stripped: string; expandable: st
       index += 1
       continue
     }
-    const delimiter = opening[2] ?? (opening[3] as string)
+    const delimiter = opening[2] ?? opening[3]
     kept.push(line.slice(0, opening.index) + '<<STRIPPED' + line.slice(opening.index + opening[0].length))
     index += 1
     while (index < lines.length && (lines[index] as string).trim() !== delimiter) index += 1
@@ -415,7 +415,7 @@ function tokenizePosix(command: string): string[] | undefined {
   }
 
   while (index < length) {
-    const char = command[index]
+    const char = command.charAt(index)
     if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
       flush()
       index += 1
@@ -433,9 +433,9 @@ function tokenizePosix(command: string): string[] | undefined {
       let cursor = index + 1
       let closed = false
       while (cursor < length) {
-        const c = command[cursor]
+        const c = command.charAt(cursor)
         if (c === '\\' && cursor + 1 < length) {
-          current += command[cursor + 1]
+          current += command.charAt(cursor + 1)
           inToken = true
           cursor += 2
           continue
@@ -453,7 +453,7 @@ function tokenizePosix(command: string): string[] | undefined {
       continue
     }
     if (char === '\\' && index + 1 < length) {
-      current += command[index + 1]
+      current += command.charAt(index + 1)
       inToken = true
       index += 2
       continue
