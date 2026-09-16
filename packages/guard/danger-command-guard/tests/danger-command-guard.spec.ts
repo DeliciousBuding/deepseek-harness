@@ -306,7 +306,7 @@ function probeTool(name: string, bodyCalls: { count: number }) {
     name,
     description: `probe for ${name}`,
     parameters: {},
-    execute() {
+    async execute() {
       bodyCalls.count += 1
       return [{ type: 'text' as const, text: `ran:${name}` }]
     },
