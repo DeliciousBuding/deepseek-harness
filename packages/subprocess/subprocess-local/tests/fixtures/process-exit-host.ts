@@ -13,7 +13,6 @@ if ((kind !== 'ordinary' && kind !== 'terminal')
 }
 
 const treeState = join(root, 'tree.json')
-const ready = join(root, 'ready')
 const proceed = join(root, 'proceed')
 const managedTree = fileURLToPath(new URL('./managed-tree.ts', import.meta.url))
 
@@ -49,6 +48,7 @@ if (kind === 'ordinary') {
     cwd: process.cwd(),
     rows: 24,
     cols: 80,
+    terminalType: 'dumb',
     graceMs: 30_000,
   })
 }
@@ -58,7 +58,6 @@ const published = JSON.parse(await readFile(treeState, 'utf8')) as { root?: unkn
 if (!Number.isSafeInteger(published.root) || !Number.isSafeInteger(published.descendant)) {
   throw new Error('managed tree published invalid process ids')
 }
-await writeFile(ready, 'ready')
 await waitForFile(proceed)
 
 if (trigger === 'dispose') {
