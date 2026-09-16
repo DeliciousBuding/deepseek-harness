@@ -134,6 +134,29 @@ describe('judgeCommand rule matrices (ported from test_shell_guard.py)', () => {
     })
   })
 
+  describe('git-clean', () => {
+    it.each([
+      'git clean -f',
+      'git clean -fd',
+      'git clean -df',
+      'git clean -fdx',
+      'git clean --force',
+      'git clean --force -d',
+    ])('denies %j', (command) => {
+      expect(judgeCommand(command)).toMatchObject({ rule: 'git-clean' })
+    })
+
+    it.each([
+      'git clean -n',
+      'git clean -ndx',
+      'git clean -i',
+      'git clean',
+      'git cleanup',
+    ])('passes %j', (command) => {
+      expect(judgeCommand(command)).toBeUndefined()
+    })
+  })
+
   describe('PowerShell / cmd equivalents', () => {
     it.each([
       'Remove-Item C:\\ -Recurse -Force',
@@ -175,6 +198,7 @@ describe('judgeCommand rule matrices (ported from test_shell_guard.py)', () => {
       'docker system prune -af',
       'git push --force origin main',
       'git reset --hard',
+      'git clean -fd',
       'Remove-Item C:\\ -Recurse -Force',
       'rd /s /q C:\\',
     ]) {
@@ -242,6 +266,10 @@ describe('GuardFall hardening parity', () => {
       'echo `rm -rf /`',
     ])('Class C substitution denies %j', (command) => {
       expect(judgeCommandHardened(command)).toMatchObject({ rule: 'subst-rm-root' })
+    })
+
+    it('Class C recurses into a substituted git clean', () => {
+      expect(judgeCommandHardened('echo "$(git clean -fd)"')).toMatchObject({ rule: 'subst-git-clean' })
     })
 
     it('denies a backslash-newline line continuation', () => {

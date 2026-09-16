@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-danger-command-guard",
-  "description": "Danger-command guard plugin: monotonic deny policy for catastrophic shell commands (rm -rf /, docker prune -af, git push --force, git reset --hard, PowerShell/cmd equivalents) with JSONL audit",
+  "description": "Danger-command guard plugin: monotonic deny policy for catastrophic shell commands (rm -rf /, docker prune -af, git push --force, git reset --hard, git clean -f, PowerShell/cmd equivalents) with JSONL audit",
   "version": "0.1.0-rc.5",
   "publishConfig": {
     "access": "public"

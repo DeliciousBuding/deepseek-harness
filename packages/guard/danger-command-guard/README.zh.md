@@ -28,6 +28,7 @@
 | `push-force` | `git push --force` / `-f` | `--force-with-lease` 经 veto 豁免 |
 | `push-plus` | `git push +refspec` | 强制覆盖远端分支（等价 `--force`） |
 | `reset-hard` | `git reset --hard` | |
+| `git-clean` | `git clean` 带 `-f` / `--force`（含短旗组合里的 `f`） | 裸 `git clean`、`-n` 预演与 `-i` 交互放行 |
 | `ps-remove` | `Remove-Item` 同时带 `-Recurse` 与 `-Force`（任意顺序）且目标为根/家目录 | flag 检测用 `(?:^\|\s)`，因 `-` 是非词字符 |
 | `cmd-rd` | `rd`/`rmdir /s /q` 且目标为根/家目录 | |
 
@@ -82,6 +83,7 @@
 - `危险命令已拦截：docker prune -af 有事故前科（2026-05-28），仅允许 docker system prune -f。`
 - `危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。`
 - `危险操作已拦截：git reset --hard 属破坏性操作。`
+- `危险操作已拦截：git clean -f/--force 永久删除未跟踪文件（不可恢复；先用 git clean -n 预览）。`
 - `危险命令已拦截：Remove-Item -Recurse -Force 删除根目录/家目录不可恢复。`
 - `危险命令已拦截：rd/rmdir /s /q 删除根目录/家目录不可恢复。`
 

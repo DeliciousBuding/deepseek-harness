@@ -68,8 +68,8 @@ export const Config: z<Config> = z.object({
 export interface DenyVerdict {
   /**
    * Stable rule id stamped on the audit entry (`rm-root`, `prune-af`,
-   * `push-force`, `push-plus`, `reset-hard`, `ps-remove`, `cmd-rd`,
-   * `ifs-obfuscation`, or `subst-<rule>`).
+   * `push-force`, `push-plus`, `reset-hard`, `git-clean`, `ps-remove`,
+   * `cmd-rd`, `ifs-obfuscation`, or `subst-<rule>`).
    */
   rule: string
   /** Model-visible deny reason (Chinese, verbatim from `shell_guard.py`). */
@@ -94,7 +94,7 @@ interface ShellRule {
 const ROOT_TARGET = /\s\/(?:\s|$|"|')|\s~(?:\s|$|"|')|\s\/c\/(?:\s|$|"|'|\*)|\s\$(?:HOME|HOMEPATH)\b(?:\s|$|"|'|\*|\/\*)|\s\$\{HOME\}(?:\s|$|"|'|\*|\/\*)|\s\$env:(?:USERPROFILE|HOMEDRIVE|HOMEPATH)\b(?:\s|$|"|'|\*|\/\*)|\sC:\\\s|\sC:\\$|\sC:\\"/
 
 /**
- * The five inline shell rules, in `shell_guard.py`'s `SHELL_RULES` order.
+ * The six inline shell rules, in `shell_guard.py`'s `SHELL_RULES` order.
  * Each matcher is the Python pattern transliterated to a JavaScript literal
  * with the same `i` (IGNORECASE) semantics; `[^\n]` keeps the match on one
  * command line. The `rm-root` matcher already folds the `--recursive`
@@ -128,6 +128,15 @@ const SHELL_RULES: readonly ShellRule[] = [
     rule: 'reset-hard',
     matcher: /\bgit\b[^\n]*\breset\b[^\n]*--hard\b/i,
     reason: '危险操作已拦截：git reset --hard 属破坏性操作。',
+  },
+  {
+    rule: 'git-clean',
+    // `clean.requireForce` defaults to true: without -f/--force git clean
+    // refuses to run, so carrying the flag means a real delete. Like
+    // push-force above, /i also matches the uppercase -F cluster — a
+    // deliberate case-loose divergence from shell_guard.py (safe-side deny).
+    matcher: /\bgit\b[^\n]*\bclean\b[^\n]*(?:--force(?![-\w])|[ \t]-[a-z]*f)/i,
+    reason: '危险操作已拦截：git clean -f/--force 永久删除未跟踪文件（不可恢复；先用 git clean -n 预览）。',
   },
 ]
 
