@@ -15,13 +15,13 @@ Ship `@deepseek-ai/dsh-danger-command-guard` (`packages/guard/danger-command-gua
 - **`tools/pre-execute`** — the extensible waterfall gate. On a match it returns `PreToolDecision.deny` with the model-visible Chinese reason (materialized as an `Error: <reason>` tool result); everything else delegates with `next()`.
 - **`ctx.tools.guard()`** — the monotonic final guard. It re-judges after the whole waterfall, so an upstream listener that short-circuited with an allow decision cannot resurrect a call this final invariant forbids.
 
-The rule set is a line-for-line port of `shell_guard.py`: the four inline regex rules (`rm-root`, `prune-af`, `push-force` with `--force-with-lease` veto, `reset-hard`) plus the two predicate checks (`ps-remove`, `cmd-rd`) with the same `ROOT_TARGET` terminator logic and IGNORECASE semantics. The deny texts are verbatim Chinese. The unit-test deny/pass matrices copy the parametrize lists from `tests/test_shell_guard.py` so the two implementations stay provably identical.
+The native judges preserve the Python guard's command-scoped force-push checks, literal-body handling, and `.git` shell-write checks. A global lease exemption would allow one command to hide a different destructive push; splitting quoted separators would instead turn literal data into commands. [Generated shared cases](../../../../packages/guard/danger-command-guard/README.md) pin raw and hardened verdicts without a Python runtime or private-repository dependency in package CI. Their digest detects stale copies; finite fixture parity does not prove arbitrary parser equivalence or that a deployed profile loads the plugin.
 
 A denial also appends one JSONL audit line in the hook-kit `audit.py` format (`ts`/`event: harness_deny`/`actor: dsh`/`rule`/`tool`/`command` truncated at `commandPreviewChars`/`cwd`/`session_id`) to `$HOOK_KIT_AUDIT_LOG` or `~/.config/hook-kit/audit.jsonl`, written directly from TypeScript (no Python subprocess). The write is fail-soft: audit I/O errors are swallowed and never affect the guard decision or the tool call.
 
 ## Consequences
 
-- The `web` profile on the local machine mounts the row (`~/.dsh/profiles/web/cordis.patch.yml`, `insert` with id `danger-command-guard`); the package resolves through the app dependency closure healed into `$DSH_HOME/profiles/node_modules`.
+- The host aggregate checks the package and its tests. This adds no dependency to shipped bundles; a profile must still declare and activate the plugin.
 - Denials now produce a model-visible error result instead of executing; the session log records the deny through the ordinary `tool/result` pipeline, so no new session event was needed.
 - Guard, deny text, and audit format share one semantic source with the hook-kit; any rule change there must be ported here with its tests.
 - Audit rotation stays on the Python side (this plugin appends without rotating); scope is the `bash`/`pwsh` tool names only.

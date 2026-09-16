@@ -1,10 +1,10 @@
 /**
  * Native danger-command guard for the DeepSeek Harness: monotonic deny policy
  * over catastrophic shell commands on the `bash`/`pwsh` tools, plus a JSONL
- * audit trail appended to the local hook-kit audit log. The rule set, matching
- * semantics, and deny text port `shell_guard.py` from the server hook-kit
- * (`scripts/hook-kit/shell_guard.py`) verbatim, so every harness platform
- * blocks the same disaster class. Deny feedback is model-visible (the deny
+ * audit trail appended to the local hook-kit audit log. Command matching
+ * follows the Python shell guard, with parity checked by shared public cases;
+ * this plugin runs independently and retains its Chinese deny text.
+ * Deny feedback is model-visible (the deny
  * decision materializes as an error tool result) and audit writes are
  * fail-soft: an audit I/O failure never affects the guard decision or the
  * tool call it denies.
@@ -12,7 +12,8 @@
  * GuardFall hardening parity (2026-08-15): the `bash` tool goes through the
  * hardened judge (`judgeCommandHardened`) — line-continuation normalization,
  * `$(...)`/backtick substitution recursion, `$IFS` obfuscation detection, and
- * a POSIX tokenize-then-recheck pass — mirroring `judge_shell_hardened`; the
+ * a statement-scoped POSIX tokenize-then-recheck pass, after literal bodies
+ * are removed — mirroring `judge_shell_hardened`; the
  * `pwsh` tool uses the raw judge only (backslash paths would be mangled by
  * POSIX tokenization). The three escape hatches (`HOOK_KIT_GUARD_OFF`,
  * `HOOK_KIT_GUARD_ALLOW_RULES`, `HOOK_KIT_GUARD_DRY_RUN`) are honored and
@@ -68,7 +69,7 @@ export const Config: z<Config> = z.object({
 export interface DenyVerdict {
   /**
    * Stable rule id stamped on the audit entry (`rm-root`, `prune-af`,
-   * `push-force`, `push-plus`, `reset-hard`, `ps-remove`, `cmd-rd`,
+   * `push-force`, `push-plus`, `reset-hard`, `ps-remove`, `cmd-rd`, `git-dot`,
    * `ifs-obfuscation`, or `subst-<rule>`).
    */
   rule: string
@@ -76,11 +77,10 @@ export interface DenyVerdict {
   reason: string
 }
 
-/** One ordered shell rule: first matcher wins; a rule's veto regex exempts the command. */
+/** One ordered shell rule, matched within individual shell statements. */
 interface ShellRule {
   rule: string
   matcher: RegExp
-  veto?: RegExp
   reason: string
 }
 
@@ -91,7 +91,12 @@ interface ShellRule {
  * terminator. The terminator prevents sub-path false positives
  * (`/tmp/...`, `C:\project`, `$HOME/project`).
  */
-const ROOT_TARGET = /\s\/(?:\s|$|"|')|\s~(?:\s|$|"|')|\s\/c\/(?:\s|$|"|'|\*)|\s\$(?:HOME|HOMEPATH)\b(?:\s|$|"|'|\*|\/\*)|\s\$\{HOME\}(?:\s|$|"|'|\*|\/\*)|\s\$env:(?:USERPROFILE|HOMEDRIVE|HOMEPATH)\b(?:\s|$|"|'|\*|\/\*)|\sC:\\\s|\sC:\\$|\sC:\\"/
+const ROOT_TARGET = new RegExp(
+  "\\s\\/(?:\\s|$|\"|')|\\s~(?:\\s|$|\"|')|\\s\\/c\\/(?:\\s|$|\"|'|\\*)|\\s\\$(?:HOME"
+  + "|HOMEPATH)\\b(?:\\s|$|\"|'|\\*|\\/\\*)|\\s\\$\\{HOME\\}(?:\\s|$|\"|'|\\*|\\/\\*)"
+  + "|\\s\\$env:(?:USERPROFILE|HOMEDRIVE|HOMEPATH)\\b(?:\\s|$|\"|'|\\*|\\/\\*)|\\sC:\\\\\\s"
+  + '|\\sC:\\\\$|\\sC:\\\\"',
+)
 
 /**
  * The five inline shell rules, in `shell_guard.py`'s `SHELL_RULES` order.
@@ -115,13 +120,13 @@ const SHELL_RULES: readonly ShellRule[] = [
   },
   {
     rule: 'push-force',
-    matcher: /\bgit\b[^\n]*\bpush\b[^\n]*(?:--force\b|\s-f\b)/i,
-    veto: /--force-with-lease/i,
+    // Keywords remain case-insensitive; the short -f flag is case-sensitive.
+    matcher: /\b[gG][iI][tT]\b[^\n]*\b[pP][uU][sS][hH]\b[^\n]*(?:--[fF][oO][rR][cC][eE](?![-\w])|[ \t]-f\b)/,
     reason: '危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。',
   },
   {
     rule: 'push-plus',
-    matcher: /\bgit\b[^\n]*\bpush\b[^\n]*[ \t]\+[A-Za-z0-9._/-]+/i,
+    matcher: /\bgit\b[^\n]*\bpush\b[^\n]*[ \t]\+[a-z0-9._/-]+/i,
     reason: '危险操作已拦截：git push +refspec 强制覆盖远端分支（等价 --force，如需请用 --force-with-lease）。',
   },
   {
@@ -172,23 +177,150 @@ function cmdRdRoot(command: string): boolean {
 
 /**
  * Judge one shell command against the ported rule set: ordered inline rules
- * (with veto exemption), then the PowerShell and cmd equivalents. This is the
+ * within each statement, then .git writes and PowerShell/cmd equivalents. This is the
  * raw channel, equivalent to `shell_guard.py`'s `judge_shell`.
  * @param command - the full command line to judge.
  * @returns the denying verdict, or `undefined` to allow the command.
  */
 export function judgeCommand(command: string): DenyVerdict | undefined {
   if (typeof command !== 'string' || command.length === 0) return undefined
-  for (const { rule, matcher, veto, reason } of SHELL_RULES) {
-    if (veto !== undefined && veto.test(command)) continue
-    if (matcher.test(command)) return { rule, reason }
+  const { stripped } = stripLiteralBodies(command)
+  const statements = splitStatements(stripped)
+  for (const { rule, matcher, reason } of SHELL_RULES) {
+    if (statements.some(statement => matcher.test(statement))) return { rule, reason }
   }
-  if (powershellRemoveRoot(command)) return { rule: 'ps-remove', reason: PS_REMOVE_REASON }
-  if (cmdRdRoot(command)) return { rule: 'cmd-rd', reason: CMD_RD_REASON }
+  if (gitDotWrite(stripped)) return { rule: 'git-dot', reason: GIT_DOT_REASON }
+  if (powershellRemoveRoot(stripped)) return { rule: 'ps-remove', reason: PS_REMOVE_REASON }
+  if (cmdRdRoot(stripped)) return { rule: 'cmd-rd', reason: CMD_RD_REASON }
   return undefined
 }
 
-// ---- GuardFall hardening (ported verbatim from shell_guard.py) ----
+const PS_FLAVOR = new RegExp(
+  '\\b(?:Set-Content|Add-Content|Clear-Content|Out-File|Get-Content|Remove-Item'
+  + '|New-Item|Move-Item|Copy-Item|Rename-Item|Select-String|Select-Object'
+  + '|Measure-Object|Write-Host|Write-Output|ForEach-Object|Where-Object|Test-Path'
+  + '|Get-ChildItem|ConvertTo-Json|Out-Null|Sort-Object)\\b|\\$env:|\\|\\s*Out-Null',
+  'i',
+)
+
+/** Identify PowerShell, where backticks are escapes rather than command substitutions. */
+function looksLikePowershell(command: string): boolean {
+  return PS_FLAVOR.test(command)
+}
+
+/** Split unquoted separators without splitting quoted paths or command arguments. */
+function splitStatements(command: string): string[] {
+  const statements: string[] = []
+  let quote: string | undefined
+  const escape = looksLikePowershell(command) ? '`' : '\\'
+  let start = 0
+  let index = 0
+  while (index < command.length) {
+    const char = command[index]
+    if (char === escape && quote !== "'") {
+      index += 2
+      continue
+    }
+    if (quote !== undefined) {
+      if (char === quote) quote = undefined
+    } else if (char === '"' || char === "'") {
+      quote = char
+    } else if (char === '#' && (index === start || /\s/.test(command.charAt(index - 1)))) {
+      statements.push(command.slice(start, index))
+      const end = command.indexOf('\n', index)
+      if (end === -1) return statements
+      start = index = end + 1
+      continue
+    } else if (char !== undefined && ';\n|&'.includes(char)) {
+      statements.push(command.slice(start, index))
+      start = index + 1
+    }
+    index += 1
+  }
+  statements.push(command.slice(start))
+  return statements
+}
+
+const HERE_STRINGS = [
+  { start: /@'[^\S\n]*$/m, end: /^[^\S\n]*'@/m, literal: true },
+  { start: /@"[^\S\n]*$/m, end: /^[^\S\n]*"@/m, literal: false },
+] as const
+const QUOTED_HEREDOC = /<<-?[^\S\n]*(?:(['"])([A-Za-z_][A-Za-z0-9_]*)\1|\\([A-Za-z_][A-Za-z0-9_]*))/
+
+/** Remove literal bodies before normalization; return expandable PowerShell bodies separately. */
+function stripLiteralBodies(command: string): { stripped: string; expandable: string[] } {
+  let stripped = command
+  const expandable: string[] = []
+  for (const { start, end, literal } of HERE_STRINGS) {
+    for (;;) {
+      const opening = start.exec(stripped)
+      if (opening === null) break
+      const bodyStart = opening.index + opening[0].length
+      const closing = end.exec(stripped.slice(bodyStart))
+      if (closing === null) break
+      const bodyEnd = bodyStart + closing.index
+      const body = stripped.slice(bodyStart, bodyEnd)
+      if (!literal && body.trim() !== '') expandable.push(body)
+      stripped = stripped.slice(0, opening.index) + '@@' + stripped.slice(bodyEnd + closing[0].length)
+    }
+  }
+  const lines = stripped.split('\n')
+  const kept: string[] = []
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index] as string
+    const opening = QUOTED_HEREDOC.exec(line)
+    if (opening === null) {
+      kept.push(line)
+      index += 1
+      continue
+    }
+    const delimiter = opening[2] ?? opening[3]
+    kept.push(line.slice(0, opening.index) + '<<STRIPPED' + line.slice(opening.index + opening[0].length))
+    index += 1
+    while (index < lines.length && (lines[index] as string).trim() !== delimiter) index += 1
+    index += 1
+  }
+  return { stripped: kept.join('\n'), expandable }
+}
+
+const GIT_DOT_TARGET = /[^\s'"<>|;]*\.git(?=[\\/\s'"<>|;]|$)(?:[\\/][^\s'"<>|;]*)?/gi
+const GIT_DOT_WRITE_CMDS = new RegExp(
+  '\\b(?:tee|mv|move|rm|del|rd|rmdir|ln|mkdir|touch|truncate|patch|Set-Content'
+  + '|Add-Content|Clear-Content|Out-File|New-Item|Remove-Item|Move-Item'
+  + '|Rename-Item)\\b',
+  'i',
+)
+const GIT_DOT_PY_WRITE = new RegExp(
+  '\\b(?:write_text|write_bytes|writelines|rmtree|unlink)\\b|\\bshutil\\.[a-z_]+'
+  + "|\\bos\\.(?:remove|replace|rename|mkdir|makedirs)\\b|open\\([^)]*['\"][wax]",
+  'i',
+)
+const GIT_DOT_REDIRECT = />>?\s*[^\s;|&]*\.git(?=[\\/]|$)/i
+const GIT_DOT_READ_HEAD = new RegExp(
+  '^\\s*(?:cat|type|less|more|head|tail|ls|dir|find|grep|rg|stat|git|Get-Content'
+  + '|Select-String|Test-Path|Get-ChildItem|Get-Item)\\b',
+  'i',
+)
+const GIT_DOT_REASON = '危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。'
+
+/** Match .git writes within one statement, excluding read-only commands and neighbouring names. */
+function gitDotWrite(command: string): boolean {
+  for (const statement of splitStatements(command)) {
+    const targets = (statement.match(GIT_DOT_TARGET) ?? []).filter((target) => {
+      const basename = target.replace(/[\\/]+$/, '').replace(/\\/g, '/').split('/').at(-1)
+      return basename !== '.gitignore' && basename !== '.gitattributes'
+    })
+    if (targets.length === 0) continue
+    if (GIT_DOT_REDIRECT.test(statement)) return true
+    if (!GIT_DOT_WRITE_CMDS.test(statement) && !GIT_DOT_PY_WRITE.test(statement)) continue
+    if (GIT_DOT_READ_HEAD.test(statement.trim())) continue
+    return true
+  }
+  return false
+}
+
+// ---- GuardFall hardening (ported from shell_guard.py) ----
 
 /** Substitution recursion depth cap (mirrors `SUBSTITUTION_DEPTH_LIMIT`). */
 const SUBSTITUTION_DEPTH_LIMIT = 4
@@ -202,14 +334,13 @@ const IFS_OBFUSCATION_BINARIES = /\b(?:rm|docker|git)\b/i
 const IFS_OBFUSCATION_REASON = '危险命令已拦截：$IFS 混淆展开（rm/docker/git 组合绕过检测）。'
 
 /**
- * Collapse a bash line continuation (backslash + newline) and fold the
- * remaining `\r`/`\n` to spaces, mirroring `shell_guard.py`'s
- * `normalize_command` — prevents `rm -rf \<newline>/` cross-line bypass.
+ * Collapse bash line continuations, preserving bare newlines as statement
+ * separators, mirroring Python normalize_command.
  * @param command - the raw command line.
- * @returns the single-line normalized command.
+ * @returns the command with normalized line endings and preserved statement separators.
  */
 function normalizeCommand(command: string): string {
-  return command.replace(/\\\r?\n/g, ' ').replace(/\r/g, ' ').replace(/\n/g, ' ')
+  return command.replace(/\\\r?\n/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
 /**
@@ -219,9 +350,10 @@ function normalizeCommand(command: string): string {
  * unclosed construct.
  * @param command - the command to scan.
  * @param limit - the per-body length cap.
+ * @param backticks - false for PowerShell, where backticks are escapes.
  * @returns the collected substitution bodies.
  */
-function collectSubstitutions(command: string, limit: number): string[] {
+function collectSubstitutions(command: string, limit: number, backticks = true): string[] {
   const results: string[] = []
   let index = 0
   const length = command.length
@@ -247,7 +379,7 @@ function collectSubstitutions(command: string, limit: number): string[] {
         cursor += 1
       }
       if (!closed) return results
-    } else if (char === '`') {
+    } else if (backticks && char === '`') {
       const end = command.indexOf('`', index + 1)
       if (end === -1) return results
       const body = command.slice(index + 1, end)
@@ -283,7 +415,7 @@ function tokenizePosix(command: string): string[] | undefined {
   }
 
   while (index < length) {
-    const char = command[index]
+    const char = command.charAt(index)
     if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
       flush()
       index += 1
@@ -301,9 +433,9 @@ function tokenizePosix(command: string): string[] | undefined {
       let cursor = index + 1
       let closed = false
       while (cursor < length) {
-        const c = command[cursor]
+        const c = command.charAt(cursor)
         if (c === '\\' && cursor + 1 < length) {
-          current += command[cursor + 1]
+          current += command.charAt(cursor + 1)
           inToken = true
           cursor += 2
           continue
@@ -321,7 +453,7 @@ function tokenizePosix(command: string): string[] | undefined {
       continue
     }
     if (char === '\\' && index + 1 < length) {
-      current += command[index + 1]
+      current += command.charAt(index + 1)
       inToken = true
       index += 2
       continue
@@ -342,13 +474,20 @@ function tokenizePosix(command: string): string[] | undefined {
  * @returns the rejoined token stream, or `undefined`.
  */
 function tokenizedVariant(command: string): string | undefined {
-  const tokens = tokenizePosix(command)
-  return tokens === undefined ? undefined : tokens.join(' ')
+  const lines: string[] = []
+  for (const statement of splitStatements(command)) {
+    const tokens = tokenizePosix(statement)
+    if (tokens === undefined) return undefined
+    lines.push(tokens.map(token => /[;\n|&]/.test(token)
+      ? "'" + token.replace(/'/g, "'\"'\"'") + "'"
+      : token).join(' '))
+  }
+  return lines.join('\n')
 }
 
 /**
  * Hardened judge for POSIX shells (`bash`), mirroring `shell_guard.py`'s
- * `judge_shell_hardened`: normalize → substitution recursion (Class C) →
+ * `judge_shell_hardened`: strip data → normalize → substitution recursion (Class C) →
  * `$IFS` check (Class B) → raw judge → tokenize-then-recheck (Class A).
  * @param command - the raw command line.
  * @param depth - substitution recursion depth.
@@ -356,14 +495,22 @@ function tokenizedVariant(command: string): string | undefined {
  */
 export function judgeCommandHardened(command: string, depth = 0): DenyVerdict | undefined {
   if (typeof command !== 'string' || command.length === 0) return undefined
-  const normalized = normalizeCommand(command)
+  const { stripped, expandable } = stripLiteralBodies(command)
+  const powershell = looksLikePowershell(command)
+  const normalized = normalizeCommand(stripped)
 
   // GuardFall Class C: a benign outer command wrapping a destructive inner
   // substitution (`echo "$(rm -rf /)"`).
   if (depth < SUBSTITUTION_DEPTH_LIMIT) {
-    for (const body of collectSubstitutions(normalized, SUBSTITUTION_BODY_LIMIT)) {
+    for (const body of collectSubstitutions(normalized, SUBSTITUTION_BODY_LIMIT, !powershell)) {
       const inner = judgeCommandHardened(body, depth + 1)
       if (inner !== undefined) return { rule: `subst-${inner.rule}`, reason: inner.reason }
+    }
+    for (const body of expandable) {
+      for (const sub of collectSubstitutions(body, SUBSTITUTION_BODY_LIMIT, false)) {
+        const inner = judgeCommandHardened(sub, depth + 1)
+        if (inner !== undefined) return { rule: `subst-${inner.rule}`, reason: inner.reason }
+      }
     }
   }
 

@@ -11,9 +11,11 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Include from '@deepseek-ai/cordis-plugin-include'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -23,6 +25,7 @@ import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as DangerCommandGuard from '@deepseek-ai/dsh-danger-command-guard'
 import { judgeCommand, judgeCommandHardened } from '@deepseek-ai/dsh-danger-command-guard'
 import type { Config } from '@deepseek-ai/dsh-danger-command-guard'
+import sharedFixture from './fixtures/shell-guard-cases.json'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 const testToolSignal = new AbortController().signal
@@ -306,7 +309,7 @@ function probeTool(name: string, bodyCalls: { count: number }) {
     name,
     description: `probe for ${name}`,
     parameters: {},
-    execute() {
+    async execute() {
       bodyCalls.count += 1
       return [{ type: 'text' as const, text: `ran:${name}` }]
     },
@@ -423,6 +426,25 @@ describe('tools/pre-execute deny through the real registry', () => {
 })
 
 // ---- the monotonic guard survives a short-circuited waterfall ----
+
+describe('shared cases through both registry guards', () => {
+  const ids = ['lease-newline', 'lease-and-force', 'heredoc-header-command', 'git-dot-redirect']
+  it.each(ids)('denies %s even when an earlier listener allows', async (id) => {
+    const testCase = sharedFixture.cases.find(candidate => candidate.id === id)!
+    const auditPath = join(tempDir(), 'audit.jsonl')
+    const ctx = await registryHarness({ auditPath })
+    const bodyCalls = { count: 0 }
+    ctx.tools.register(probeTool('bash', bodyCalls))
+    ctx.on('tools/pre-execute', () => Promise.resolve({ kind: 'allow' }), { prepend: true })
+    const result = await ctx.tools.execute({
+      callId: CallId('shared-denial'), name: 'bash', arguments: { command: testCase.command }, signal: testToolSignal,
+    })
+    expect(result.isError).toBe(true)
+    expect(bodyCalls.count).toBe(0)
+    expect(auditLines(auditPath).map(entry => entry.rule)).toEqual([testCase.hardened_rule])
+    await ctx.fiber.dispose()
+  })
+})
 
 describe('tools.guard() monotonic backstop', () => {
   it('denies even when an upstream prepended listener force-allows', async () => {
@@ -586,5 +608,77 @@ describe('dsh-danger-command-guard real-load-path guard', () => {
     expect(unwrapped.name).toBe('danger-command-guard')
     expect(unwrapped.inject).toEqual(['tools'])
     expect(typeof unwrapped.apply).toBe('function')
+  })
+})
+
+describe('guard through a test-only Loader composition', () => {
+  it('records model-visible denials and permits literal documentation', async () => {
+    const root = tempDir()
+    const auditPath = join(root, 'audit.jsonl')
+    const configPath = join(root, 'cordis.yml')
+    writeFileSync(configPath, JSON.stringify([
+      { name: 'guard-test-prerequisites' },
+      { name: '@deepseek-ai/dsh-agent-loop', config: { agents: [] } },
+      { name: '@deepseek-ai/dsh-danger-command-guard', config: { auditPath } },
+    ]))
+    const ctx = new Context()
+    ctx.baseUrl = pathToFileURL(root).href + '/'
+    await ctx.plugin(Loader)
+    ctx.loader.builtins.include = Include
+    const modules = new Map<string, unknown>([
+      ['guard-test-prerequisites', { name: 'guard-test-prerequisites', apply: mountAgentLoopTestDependencies }],
+      ['@deepseek-ai/dsh-agent-loop', AgentLoop],
+      ['@deepseek-ai/dsh-danger-command-guard', DangerCommandGuard],
+    ])
+    ctx.loader.internal = {
+      version: 'v2',
+      async import(specifier: string) {
+        if (!modules.has(specifier)) throw new Error('unexpected Loader import: ' + specifier)
+        return modules.get(specifier)
+      },
+    } as unknown as NonNullable<typeof ctx.loader.internal>
+    try {
+      await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
+      await ctx.loader.await()
+      expect([...ctx.loader.entries()].filter(entry => entry.fiber === undefined && !entry.disabled)).toEqual([])
+      const bodyCalls = { count: 0 }
+      ctx.tools.register(probeTool('bash', bodyCalls))
+      const commands = ['lease-and-force', 'git-dot-redirect', 'literal-heredoc']
+        .map(id => sharedFixture.cases.find(testCase => testCase.id === id)!.command)
+      ctx.llm.registerAdapter(['mock'], new MockAdapter([
+        ...commands.map((command, index) => toolCallResponse(`call-${index}`, 'bash', { command })),
+        textResponse('done'),
+      ]))
+      const agent = ctx.agentLoop.create(SessionId('guard-loader'), { provider: 'mock', model: 'mock' })
+      const idle = new Promise<void>((resolve) => {
+        const dispose = ctx.on('agent/status', ({ agent: current, status }) => {
+          if (current === agent && status === 'idle') { dispose(); resolve() }
+        })
+      })
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+      await idle
+      expect(bodyCalls.count).toBe(1)
+      expect(auditLines(auditPath).map(entry => entry.rule)).toEqual(['push-force', 'git-dot'])
+      expect(resultTexts(agent)).toEqual([
+        'Error: 危险操作已拦截：git push --force 属破坏性操作（--force-with-lease 放行）。'
+        + ' 逃生口：HOOK_KIT_GUARD_ALLOW_RULES=push-force 按规则放行，或 HOOK_KIT_GUARD_OFF=1 会话关闭；均写审计 ~/.config/hook-kit/audit.jsonl（DRY_RUN=1 只审计不拦）。',
+        'Error: 危险操作已拦截：写入 .git/ 内部文件会破坏 git 历史与钩子（红线同 apply_patch 路径；.gitignore/.gitattributes 除外；只读 cat/Get-Content/git 子命令不受影响）。'
+        + ' 逃生口：HOOK_KIT_GUARD_ALLOW_RULES=git-dot 按规则放行，或 HOOK_KIT_GUARD_OFF=1 会话关闭；均写审计 ~/.config/hook-kit/audit.jsonl（DRY_RUN=1 只审计不拦）。',
+        'ran:bash',
+      ])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('bounded substitution scanning', () => {
+  it.each(['echo $((1 + 2))', 'echo $(unfinished', 'echo '+'`'+'unfinished',
+    'echo '+'`'.repeat(2), 'echo $(' + 'x'.repeat(4001) + ')'])('allows incomplete or inert input %j', (command) => {
+    expect(judgeCommandHardened(command)).toBeUndefined()
+  })
+
+  it('stops recursive scanning at the depth limit', () => {
+    expect(judgeCommandHardened('echo $(date)', 4)).toBeUndefined()
   })
 })

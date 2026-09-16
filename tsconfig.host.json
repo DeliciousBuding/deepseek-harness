@@ -130,7 +130,6 @@
   // suffixes are mutually exclusive, so each aggregate excludes the other's
   // and the package test glob above needs no per-file entry.
   "exclude": [
-    "packages/guard/danger-command-guard/**",
     "packages/client/*/src/**",
     "benchmarks/**/*.client.ts",
     "benchmarks/**/*.client.tsx",
@@ -312,6 +311,7 @@
     { "path": "./packages/spill/spill" },
     { "path": "./packages/spill/spill-local" },
     { "path": "./packages/spill/spill-policy" },
+    { "path": "./packages/guard/danger-command-guard" },
     { "path": "./packages/guard/timeout-policy" },
     { "path": "./packages/runtime-diagnostics/invariants" },
     { "path": "./packages/test-support/agent-loop-testkit" },
