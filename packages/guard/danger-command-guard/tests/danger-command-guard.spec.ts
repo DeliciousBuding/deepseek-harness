@@ -19,10 +19,10 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
-import * as DangerCommandGuard from '@deepseek-ai/dsh-danger-command-guard'
-import { judgeCommand, judgeCommandHardened } from '@deepseek-ai/dsh-danger-command-guard'
-import type { Config } from '@deepseek-ai/dsh-danger-command-guard'
+import { defineContentToolFixture, executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as DangerCommandGuard from '../src/index.ts'
+import { judgeCommand, judgeCommandHardened } from '../src/index.ts'
+import type { Config } from '../src/index.ts'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 const testToolSignal = new AbortController().signal
@@ -299,7 +299,7 @@ describe('escape hatches', () => {
     const ctx = await registryHarness({ auditPath })
     const bodyCalls = { count: 0 }
     ctx.tools.register(probeTool('bash', bodyCalls))
-    const result = await ctx.tools.execute({
+    const result = await executeModelToolFixture(ctx, {
       callId: ToolCallId(`escape-${envName}`), name: 'bash', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
     })
     expect(result.isError).toBe(false)
@@ -315,7 +315,7 @@ describe('escape hatches', () => {
     const ctx = await registryHarness({ auditPath })
     const bodyCalls = { count: 0 }
     ctx.tools.register(probeTool('bash', bodyCalls))
-    const result = await ctx.tools.execute({
+    const result = await executeModelToolFixture(ctx, {
       callId: ToolCallId('escape-allow-rules'), name: 'bash', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
     })
     expect(result.isError).toBe(false)
@@ -355,9 +355,7 @@ function resultTexts(agent: Agent): string[] {
     .filter((event): event is SessionEvent<'tool/result'> => event.type === 'tool/result')
     .map((event) => {
       const block = event.data.message.content[0]
-      return block === undefined ? '' : block.content
-        .map(contentBlock => contentBlock.type === 'text' ? contentBlock.text : '')
-        .join('|')
+      return block?.type === 'text' ? block.text : ''
     })
 }
 
@@ -370,7 +368,7 @@ async function expectDenied(
   reason: string,
 ): Promise<void> {
   ctx.tools.register(probeTool(name, bodyCalls))
-  const result = await ctx.tools.execute({
+  const result = await executeModelToolFixture(ctx, {
     callId: ToolCallId(`deny-${name}`), name, arguments: { command }, signal: testToolSignal,
   })
   expect(result.isError).toBe(true)
@@ -401,12 +399,12 @@ describe('tools/pre-execute deny through the real registry', () => {
     const bodyCalls = { count: 0 }
     ctx.tools.register(probeTool('bash', bodyCalls))
     ctx.tools.register(probeTool('read', bodyCalls))
-    const safe = await ctx.tools.execute({
+    const safe = await executeModelToolFixture(ctx, {
       callId: ToolCallId('safe'), name: 'bash', arguments: { command: 'ls -la' }, signal: testToolSignal,
     })
     expect(safe.isError).toBe(false)
     // A non-guarded tool carrying a dangerous-looking string is not judged.
-    const other = await ctx.tools.execute({
+    const other = await executeModelToolFixture(ctx, {
       callId: ToolCallId('other'), name: 'read', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
     })
     expect(other.isError).toBe(false)
@@ -421,7 +419,7 @@ describe('tools/pre-execute deny through the real registry', () => {
       ['missing', {}],
       ['non-string-command', { command: 42 }],
     ] as const) {
-      const result = await ctx.tools.execute({
+      const result = await executeModelToolFixture(ctx, {
         callId: ToolCallId(callId), name: 'bash', arguments: argumentsValue, signal: testToolSignal,
       })
       expect(result.isError, callId).toBe(false)
@@ -437,7 +435,7 @@ describe('tools/pre-execute deny through the real registry', () => {
       ['null-args', null],
       ['non-object', 'not-an-object'],
     ] as const) {
-      const result = await ctx.tools.execute({
+      const result = await executeModelToolFixture(ctx, {
         callId: ToolCallId(callId), name: 'bash', arguments: argumentsValue, signal: testToolSignal,
       })
       // The guard abstained (no shell command to judge); the error comes from
@@ -459,7 +457,7 @@ describe('tools.guard() monotonic backstop', () => {
     ctx.tools.register(probeTool('bash', bodyCalls))
     const removeAllowListener = ctx.on('tools/pre-execute',
       () => Promise.resolve({ kind: 'allow' }), { prepend: true })
-    const result = await ctx.tools.execute({
+    const result = await executeModelToolFixture(ctx, {
       callId: ToolCallId('backstop'), name: 'bash', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
     })
     expect(result.isError).toBe(true)
@@ -595,7 +593,7 @@ describe('disposal (HMR safety)', () => {
 
     await fiber.dispose()
 
-    const result = await ctx.tools.execute({
+    const result = await executeModelToolFixture(ctx, {
       callId: ToolCallId('after-dispose'), name: 'bash', arguments: { command: 'rm -rf /' }, signal: testToolSignal,
     })
     expect(result.isError).toBe(false)

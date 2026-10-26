@@ -37,7 +37,9 @@ verifyDepsBeforeRun: warn
 # (git hooks) genuinely need theirs.
 allowBuilds:
   esbuild: true
-  lefthook: true
+  # Global hook-kit owns core.hooksPath; the dependency's postinstall runs
+  # before our root installer and would replace those user-owned launchers.
+  lefthook: false
   # Cross-platform boundary for the persistent PTY backend, including ConPTY on Windows.
   node-pty: true
   # Pulled in by @earendil-works/pi-ai (optional LLM API backend). pnpm lists
